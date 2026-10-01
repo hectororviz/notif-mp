@@ -5,9 +5,6 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-
 val Context.ds by preferencesDataStore("notifmp")
 
 object Keys {
@@ -21,7 +18,7 @@ object Keys {
   val SERVICE_ON = booleanPreferencesKey("service_on")
 }
 
-class TokenStore(ctx: Context) {
+class TokenStore(private val ctx: Context) {
   private val mk = MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
   private val p = EncryptedSharedPreferences.create(ctx, "mp_tokens", mk,
     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
@@ -36,9 +33,8 @@ class TokenStore(ctx: Context) {
   fun exp(): Long = p.getLong("exp", 0)
   fun linked(): Boolean = !access().isNullOrEmpty()
   fun clear() = p.edit().clear().apply()
-  suspend fun needsRefresh(): Boolean =
-    ctx.ds.data.map { it[Keys.LAST_POLL] ?: 0 }.first().let {
-      val e = exp()
-      e != 0L && e < System.currentTimeMillis() + 5 * 60_000
-    }
+  fun needsRefresh(): Boolean {
+    val e = exp()
+    return e != 0L && e < System.currentTimeMillis() + 5 * 60_000
+  }
 }

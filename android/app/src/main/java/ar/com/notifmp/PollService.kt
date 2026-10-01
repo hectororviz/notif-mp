@@ -106,8 +106,8 @@ class PollService : Service() {
       if (!isTransfer || p.optString("status") != "approved") continue
       val id = p.get("id").toString()
       val payer = p.optJSONObject("payer")
-      val name = listOfNotNull(payer?.optString("first_name"), payer?.optString("last_name")).joinToString(" ").ifEmpty { payer?.optString("email") }
-      val ins = db.movements().insert(Movement(id, p.optDouble("transaction_amount"), name.ifEmpty { null }, payer?.optString("email"), p.optString("date_approved"), p.optString("payment_method_id")))
+      val name = listOfNotNull(payer?.optString("first_name"), payer?.optString("last_name")).joinToString(" ").ifEmpty { payer?.optString("email").orEmpty() }
+      val ins = db.movements().insert(Movement(id, p.optDouble("transaction_amount"), name.takeIf { it.isNotBlank() }, payer?.optString("email"), p.optString("date_approved"), p.optString("payment_method_id")))
       if (ins != -1L) { notifyTransfer(p.optDouble("transaction_amount")); found = true }
     }
     return found

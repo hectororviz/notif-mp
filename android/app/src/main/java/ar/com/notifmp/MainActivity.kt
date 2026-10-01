@@ -3,8 +3,9 @@ package ar.com.notifmp
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
-import android.speech.tts.TextToSpeech
+import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -41,22 +42,41 @@ class MainActivity : ComponentActivity() {
   override fun onNewIntent(i: Intent) { super.onNewIntent(i); handleDeepLink(i) }
   private fun handleDeepLink(i: Intent) {
     val d = i.data ?: return
-    if (d.toString().contains("oauth/callback")) {
-      val code = d.getQueryParameter("code") ?: return
-      val state = d.getQueryParameter("state") ?: return
-      val prefs = getSharedPreferences("pkce", 0)
-      if (prefs.getString("last_state", "") != state) return
-      val verifier = prefs.getString("v_$state", null) ?: return
-      Thread {
-        try {
-          val r = kotlinx.coroutines.runBlocking {
-            proxy().exchange(mapOf("code" to code, "code_verifier" to verifier, "redirect_uri" to BuildConfig.REDIRECT_URI))
-          }
-          if (r.access_token != null)
-            TokenStore(this).save(r.access_token, r.refresh_token, r.expires_in ?: 15552000, r.user_id?.toString())
-        } catch (_: Exception) {}
-      }.start()
+    if (!d.toString().contains("oauth/callback")) return
+    val code = d.getQueryParameter("code")
+    val state = d.getQueryParameter("state")
+    Log.d("NotifMP", "callback code=${code?.take(8)} state=$state")
+    if (code.isNullOrEmpty() || state.isNullOrEmpty()) {
+      Toast.makeText(this, "Callback sin code/state", Toast.LENGTH_LONG).show()
+      return
     }
+    val prefs = getSharedPreferences("pkce", 0)
+    if (prefs.getString("last_state", "") != state) {
+      Toast.makeText(this, "State no coincide (reintentá vincular)", Toast.LENGTH_LONG).show()
+      return
+    }
+    val verifier = prefs.getString("v_$state", null)
+    if (verifier.isNullOrEmpty()) {
+      Toast.makeText(this, "Sesión expirada, reintentá vincular", Toast.LENGTH_LONG).show()
+      return
+    }
+    Toast.makeText(this, "Código recibido, canjeando…", Toast.LENGTH_SHORT).show()
+    Thread {
+      try {
+        val r = kotlinx.coroutines.runBlocking {
+          proxy().exchange(mapOf("code" to code, "code_verifier" to verifier, "redirect_uri" to BuildConfig.REDIRECT_URI))
+        }
+        if (r.access_token != null) {
+          TokenStore(this).save(r.access_token, r.refresh_token, r.expires_in ?: 15552000, r.user_id?.toString())
+          runOnUiThread { Toast.makeText(this, "¡Vinculado con Mercado Pago! ✓", Toast.LENGTH_LONG).show() }
+        } else {
+          runOnUiThread { Toast.makeText(this, "El proxy no devolvió token", Toast.LENGTH_LONG).show() }
+        }
+      } catch (e: Exception) {
+        Log.e("NotifMP", "exchange fail", e)
+        runOnUiThread { Toast.makeText(this, "Error canjeando: ${e.message}", Toast.LENGTH_LONG).show() }
+      }
+    }.start()
   }
 }
 
@@ -210,7 +230,15 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
   var ttsOn by remember { mutableStateOf(true) }
   var normal by remember { mutableStateOf("60") }
   var authUrl by remember { mutableStateOf<String?>(null) }
-  LaunchedEffect(linked) { if (!linked) linked = TokenStore(ctx).linked() }
+  var manualCode by remember { mutableStateOf("") }
+  val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+  DisposableEffect(lifecycle) {
+    val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+      if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) linked = TokenStore(ctx).linked()
+    }
+    lifecycle.addObserver(obs)
+    onDispose { lifecycle.removeObserver(obs) }
+  }
   Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     Text("OAuth MP: " + if (linked) "Vinculado ✓" else "No vinculado")
     if (!linked) {
@@ -226,6 +254,27 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
         Text("QR de vinculación (escaneable desde otro equipo):")
         Image(qrBitmap(u, 420).asImageBitmap(), contentDescription = "QR vincular", modifier = Modifier.size(210.dp))
       }
+      OutlinedTextField(manualCode, { manualCode = it }, label = { Text("Pegar code manual (si no volvió sola)") })
+      Button(onClick = {
+        scope.launch {
+          try {
+            val prefs = ctx.getSharedPreferences("pkce", 0)
+            val state = prefs.getString("last_state", null)
+            val verifier = prefs.getString("v_$state", null)
+            if (state.isNullOrEmpty() || verifier.isNullOrEmpty() || manualCode.isBlank()) {
+              android.widget.Toast.makeText(ctx, "Falta vincular primero o pegar el code", android.widget.Toast.LENGTH_LONG).show()
+              return@launch
+            }
+            val r = proxy().exchange(mapOf("code" to manualCode.trim(), "code_verifier" to verifier, "redirect_uri" to BuildConfig.REDIRECT_URI))
+            if (r.access_token != null) {
+              TokenStore(ctx).save(r.access_token, r.refresh_token, r.expires_in ?: 15552000, r.user_id?.toString())
+              linked = true
+            } else android.widget.Toast.makeText(ctx, "El proxy no devolvió token", android.widget.Toast.LENGTH_LONG).show()
+          } catch (e: Exception) {
+            android.widget.Toast.makeText(ctx, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+          }
+        }
+      }) { Text("Canjear código") }
     } else {
       Button(onClick = { scope.launch { TokenStore(ctx).clear(); linked = false } }) { Text("Desvincular") }
     }

@@ -42,6 +42,8 @@ interface ProxyApi {
 fun proxy(): ProxyApi {
   val log = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
   val http = OkHttpClient.Builder().addInterceptor(log).build()
+  val moshi = com.squareup.moshi.Moshi.Builder()
+    .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
   return Retrofit.Builder().baseUrl(BuildConfig.PROXY_URL + "/")
-    .client(http).addConverterFactory(MoshiConverterFactory.create()).build().create(ProxyApi::class.java)
+    .client(http).addConverterFactory(MoshiConverterFactory.create(moshi)).build().create(ProxyApi::class.java)
 }

@@ -26,6 +26,7 @@ import androidx.room.Room
 import com.google.android.gms.ads.*
 import com.google.android.ump.UserMessagingPlatform
 import androidx.datastore.preferences.core.edit
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -231,7 +232,7 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
   var normal by remember { mutableStateOf("60") }
   var authUrl by remember { mutableStateOf<String?>(null) }
   var manualCode by remember { mutableStateOf("") }
-  val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
   DisposableEffect(lifecycle) {
     val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
       if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) linked = TokenStore(ctx).linked()

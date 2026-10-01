@@ -26,7 +26,7 @@ import androidx.room.Room
 import com.google.android.gms.ads.*
 import com.google.android.ump.UserMessagingPlatform
 import androidx.datastore.preferences.core.edit
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat

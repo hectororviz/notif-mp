@@ -100,16 +100,32 @@ fun Root() {
 @Composable
 fun Live() {
   val ctx = LocalContext.current
+  val scope = rememberCoroutineScope()
   var list by remember { mutableStateOf<List<Movement>>(emptyList()) }
-  LaunchedEffect(Unit) {
+  var turbo by remember { mutableStateOf(PollService.instance?.turboOn == true) }
+  var baseSec by remember { mutableStateOf(60) }
+  suspend fun reload() {
     val db = Room.databaseBuilder(ctx, AppDb::class.java, "notifmp.db").build()
     list = db.movements().last(5)
+    baseSec = ctx.ds.data.first()[Keys.NORMAL_SEC]?.coerceIn(10, 60) ?: 60
+    turbo = PollService.instance?.turboOn == true
+  }
+  LaunchedEffect(Unit) {
+    reload()
+    while (true) {
+      kotlinx.coroutines.delay(2000)
+      val before = list.firstOrNull()?.mpId
+      reload()
+      if (turbo && before != null && list.firstOrNull()?.mpId != before) turbo = false
+      if (!turbo && PollService.instance?.turboOn == false) turbo = false
+    }
   }
   val top = list.firstOrNull()
   val fmt = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).apply { timeZone = TimeZone.getTimeZone("America/Argentina") } }
   Column(Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
     Text(if (top != null) "$ ${"%.2f".format(top.amount)}" else "—", style = MaterialTheme.typography.displayLarge)
     Text(if (top != null) "${top.payer ?: "Transferencia"} · ${fmt.format(Date(top.notifiedAt))}" else "Sin transferencias aún")
+    Text("Cada ${if (turbo) 2 else baseSec}s ${if (turbo) "· TURBO" else ""}", style = MaterialTheme.typography.labelMedium)
     Spacer(Modifier.height(16.dp))
     Text("Últimas 5", style = MaterialTheme.typography.titleMedium)
     LazyColumn(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -118,7 +134,9 @@ fun Live() {
       }
     }
     Spacer(Modifier.height(16.dp))
-    Button(onClick = { PollService.start(ctx, 10) }) { Text("Modo espera (10 min)") }
+    Button(enabled = !turbo, onClick = {
+      scope.launch { PollService.turbo(ctx, 10); turbo = true }
+    }) { Text(if (turbo) "Turbo 2s activo…" else "Turbo 2s") }
   }
 }
 
@@ -191,7 +209,6 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
   var sound by remember { mutableStateOf(true) }
   var ttsOn by remember { mutableStateOf(true) }
   var normal by remember { mutableStateOf("60") }
-  var wait by remember { mutableStateOf("15") }
   var authUrl by remember { mutableStateOf<String?>(null) }
   LaunchedEffect(linked) { if (!linked) linked = TokenStore(ctx).linked() }
   Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -216,13 +233,10 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
     Row(verticalAlignment = Alignment.CenterVertically) { Text("Sonido"); Spacer(Modifier.width(8.dp)); Switch(sound, { sound = it }) }
     Row(verticalAlignment = Alignment.CenterVertically) { Text("Monto hablado (TTS)"); Spacer(Modifier.width(8.dp)); Switch(ttsOn, { ttsOn = it }) }
     Row(verticalAlignment = Alignment.CenterVertically) { Text("No apagar pantalla"); Spacer(Modifier.width(8.dp)); Switch(keepOn, onKeep) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      OutlinedTextField(normal, { normal = it }, label = { Text("Normal (s)") }, modifier = Modifier.weight(1f))
-      OutlinedTextField(wait, { wait = it }, label = { Text("Espera (s)") }, modifier = Modifier.weight(1f))
-    }
+    OutlinedTextField(normal, { v -> normal = v.filter { it.isDigit() }.take(2) }, label = { Text("Intervalo base (10-60s)") })
     Button(onClick = {
       scope.launch {
-        ctx.ds.edit { it[Keys.NORMAL_SEC] = normal.toIntOrNull() ?: 60; it[Keys.WAIT_SEC] = wait.toIntOrNull() ?: 15; it[Keys.SOUND] = sound; it[Keys.TTS] = ttsOn; it[Keys.SERVICE_ON] = true }
+        ctx.ds.edit { it[Keys.NORMAL_SEC] = (normal.toIntOrNull() ?: 60).coerceIn(10, 60); it[Keys.SOUND] = sound; it[Keys.TTS] = ttsOn; it[Keys.SERVICE_ON] = true }
         PollService.start(ctx)
       }
     }) { Text("Guardar e iniciar") }

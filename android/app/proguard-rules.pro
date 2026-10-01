@@ -1,0 +1,2 @@
+-keep class ar.com.notifmp.** { *; }
+-dontwarn org.apache.poi.**

@@ -1,0 +1,18 @@
+services:
+  mp-notify-proxy:
+    build: ./proxy
+    container_name: notif-mp-proxy
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "3000"
+    networks:
+      - caddy_net
+    labels:
+      caddy: notif.mposw.com.ar
+      caddy.reverse_proxy: "{{upstreams 3000}}"
+
+networks:
+  caddy_net:
+    external: true

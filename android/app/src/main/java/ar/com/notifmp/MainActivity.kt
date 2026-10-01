@@ -46,34 +46,47 @@ class MainActivity : ComponentActivity() {
     if (!d.toString().contains("oauth/callback")) return
     val code = d.getQueryParameter("code")
     val state = d.getQueryParameter("state")
+    OauthLog.add("callback", "url=${d.toString().take(120)}")
     Log.d("NotifMP", "callback code=${code?.take(8)} state=$state")
     if (code.isNullOrEmpty() || state.isNullOrEmpty()) {
+      OauthLog.add("callback", "FAIL sin code/state")
       Toast.makeText(this, "Callback sin code/state", Toast.LENGTH_LONG).show()
       return
     }
     val prefs = getSharedPreferences("pkce", 0)
     if (prefs.getString("last_state", "") != state) {
+      OauthLog.add("state", "FAIL no coincide")
       Toast.makeText(this, "State no coincide (reintentá vincular)", Toast.LENGTH_LONG).show()
       return
     }
+    OauthLog.add("state", "OK")
     val verifier = prefs.getString("v_$state", null)
     if (verifier.isNullOrEmpty()) {
+      OauthLog.add("pkce", "FAIL sin verifier (sesión expirada)")
       Toast.makeText(this, "Sesión expirada, reintentá vincular", Toast.LENGTH_LONG).show()
       return
     }
     Toast.makeText(this, "Código recibido, canjeando…", Toast.LENGTH_SHORT).show()
+    OauthLog.add("exchange", "POST ${BuildConfig.PROXY_URL}/oauth/exchange")
     Thread {
       try {
         val r = kotlinx.coroutines.runBlocking {
           proxy().exchange(mapOf("code" to code, "code_verifier" to verifier, "redirect_uri" to BuildConfig.REDIRECT_URI))
         }
+        OauthLog.add("exchange", "HTTP OK access=${if (r.access_token != null) "sí" else "no"} expires=${r.expires_in} user=${r.user_id}")
         if (r.access_token != null) {
-          TokenStore(this).save(r.access_token, r.refresh_token, r.expires_in ?: 15552000, r.user_id?.toString())
+          try {
+            TokenStore(this).save(r.access_token, r.refresh_token, r.expires_in ?: 15552000, r.user_id?.toString())
+            OauthLog.add("store", "OK guardado")
+          } catch (e: Exception) {
+            OauthLog.add("store", "FAIL ${e.javaClass.simpleName}: ${e.message}")
+          }
           runOnUiThread { Toast.makeText(this, "¡Vinculado con Mercado Pago! ✓", Toast.LENGTH_LONG).show() }
         } else {
           runOnUiThread { Toast.makeText(this, "El proxy no devolvió token", Toast.LENGTH_LONG).show() }
         }
       } catch (e: Exception) {
+        OauthLog.add("exchange", "FAIL ${e.javaClass.simpleName}: ${e.message}")
         Log.e("NotifMP", "exchange fail", e)
         runOnUiThread { Toast.makeText(this, "Error canjeando: ${e.message}", Toast.LENGTH_LONG).show() }
       }
@@ -104,7 +117,7 @@ fun Root() {
     }) { pad ->
       Column(Modifier.padding(pad)) {
         TabRow(selectedTabIndex = tab) {
-          listOf("En vivo", "Movimientos", "Configuración").forEachIndexed { i, t ->
+          listOf("En vivo", "Movimientos", "Config", "Diag").forEachIndexed { i, t ->
             Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) })
           }
         }
@@ -112,6 +125,7 @@ fun Root() {
           0 -> Live()
           1 -> Movs()
           2 -> Config(dark, { dark = it }, keepOn, { keepOn = it })
+          3 -> Diag()
         }
       }
     }
@@ -223,6 +237,27 @@ fun Movs() {
 }
 
 @Composable
+fun Diag() {
+  val ctx = LocalContext.current
+  Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Text("Diagnóstico OAuth (temporal)", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = {
+        val clip = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clip.setPrimaryClip(android.content.ClipData.newPlainText("diag", OauthLog.dump()))
+        android.widget.Toast.makeText(ctx, "Copiado", android.widget.Toast.LENGTH_SHORT).show()
+      }) { Text("Copiar") }
+      OutlinedButton(onClick = { OauthLog.clear() }) { Text("Limpiar") }
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+      items(OauthLog.rows.toList()) { r ->
+        Text("${r.time} [${r.stage}] ${r.detail}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 2.dp))
+      }
+    }
+  }
+}
+
+@Composable
 fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (Boolean) -> Unit) {
   val ctx = LocalContext.current
   val scope = rememberCoroutineScope()
@@ -272,6 +307,7 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
               linked = true
             } else android.widget.Toast.makeText(ctx, "El proxy no devolvió token", android.widget.Toast.LENGTH_LONG).show()
           } catch (e: Exception) {
+            OauthLog.add("manual", "FAIL ${e.javaClass.simpleName}: ${e.message}")
             android.widget.Toast.makeText(ctx, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
           }
         }

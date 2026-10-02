@@ -71,8 +71,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
   override fun onCreate(s: Bundle?) {
     super.onCreate(s)
-    UserMessagingPlatform.loadAndShowConsentFormIfRequired(this) {}
-    MobileAds.initialize(this)
+    // Ads solo se inicializan desde Root() cuando Premium confirma que NO es premium (AdManager).
     handleDeepLink(intent)
     setContent { Root() }
   }
@@ -143,6 +142,16 @@ fun Root() {
   val onboardDone by ctx.ds.data.map { it[Keys.ONBOARD_DONE] == true }.collectAsState(initial = true)
   var showHelp by remember { mutableStateOf(false) }
   val btnColor by ctx.ds.data.map { it[Keys.BTN_COLOR] ?: BTN_PRESET[0] }.collectAsState(initial = BTN_PRESET[0])
+  val premium by PremiumManager.isPremium.collectAsState()
+  LaunchedEffect(Unit) { PremiumManager.init(ctx) }
+  LaunchedEffect(premium) {
+    if (!premium) {
+      if (act != null) {
+        try { UserMessagingPlatform.loadAndShowConsentFormIfRequired(act) {} } catch (_: Exception) {}
+      }
+      AdManager.initIfNeeded(ctx)
+    }
+  }
   LaunchedEffect(keepOn) {
     if (keepOn) act?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     else act?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -157,13 +166,15 @@ fun Root() {
     }
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(bottomBar = {
-      AndroidView(factory = { c ->
-        AdView(c).apply {
-          setAdSize(AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(c, 360))
-          adUnitId = BuildConfig.ADMOB_BANNER_ID
-          loadAd(AdRequest.Builder().build())
-        }
-      }, modifier = Modifier.fillMaxWidth().height(60.dp))
+      if (!premium) {
+        AndroidView(factory = { c ->
+          AdView(c).apply {
+            setAdSize(AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(c, 360))
+            adUnitId = BuildConfig.ADMOB_BANNER_ID
+            loadAd(AdRequest.Builder().build())
+          }
+        }, modifier = Modifier.fillMaxWidth().height(60.dp))
+      }
     }) { pad ->
       Column(Modifier.padding(pad)) {
         TabRow(selectedTabIndex = tab) {
@@ -214,8 +225,6 @@ fun Live(btnColor: Int) {
   var baseSec by remember { mutableStateOf(60) }
   var serviceOn by remember { mutableStateOf(true) }
   var showSuccess by remember { mutableStateOf(false) }
-  val announcer = remember { Announcer(ctx) }
-  DisposableEffect(Unit) { onDispose { announcer.release() } }
 
   suspend fun reload() {
     val db = Room.databaseBuilder(ctx, AppDb::class.java, "notifmp.db").build()
@@ -228,9 +237,9 @@ fun Live(btnColor: Int) {
     } catch (_: Exception) {} finally { try { db.close() } catch (_: Exception) {} }
   }
 
-  fun onNewPayment(amount: Double, payer: String?) {
-    announcer.soundOn = true
-    announcer.playMp()
+  fun onNewPayment() {
+    // El audio (mp.mp3 + TTS) lo emite PollService aunque la app esté en 2do plano.
+    // Aquí solo Lottie + vibración.
     try {
       val vib = if (Build.VERSION.SDK_INT >= 31) {
         val vm = ctx.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
@@ -252,7 +261,7 @@ fun Live(btnColor: Int) {
       val after = list.firstOrNull()
       if (before != null && after != null && after.mpId != before) {
         if (turbo) turbo = false
-        if (serviceOn) onNewPayment(after.amount, after.payer)
+        if (serviceOn) onNewPayment()
       }
       if (turbo && before != null && after?.mpId != before) turbo = false
       if (!turbo && PollService.instance?.turboOn == false) turbo = false
@@ -562,12 +571,46 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
         Toast.makeText(ctx, "Configuración guardada ✓", Toast.LENGTH_SHORT).show()
       }
     }, colors = appBtnColors(selColor), modifier = Modifier.fillMaxWidth()) { Text("Guardar e iniciar") }
+    PremiumCard(selColor)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       OutlinedButton(onClick = { showLogs = true }, modifier = Modifier.weight(1f)) { Text("Ver logs") }
       OutlinedButton(onClick = onHelp, modifier = Modifier.weight(1f)) { Text("Ver ayuda") }
     }
   }
   if (showLogs) LogsDialog { showLogs = false }
+}
+
+@Composable
+fun PremiumCard(selColor: Int) {
+  val ctx = LocalContext.current
+  val premium by PremiumManager.isPremium.collectAsState()
+  val price by PremiumManager.priceText.collectAsState()
+  val msg by PremiumManager.statusMsg.collectAsState()
+  LaunchedEffect(msg) {
+    msg?.let {
+      Toast.makeText(ctx, it, Toast.LENGTH_SHORT).show()
+      PremiumManager.statusMsg.tryEmit(null)
+    }
+  }
+  ElevatedCard(Modifier.fillMaxWidth()) {
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Text("4 · Premium", style = MaterialTheme.typography.titleMedium)
+      if (premium) {
+        Text("Premium activo ✓ Sin publicidad")
+      } else {
+        Text("Quitan los banners con una compra única" + (price?.let { " ($it)" } ?: ""))
+        Button(
+          onClick = {
+            val act = ctx as? Activity
+            if (act != null) PremiumManager.launchBuy(act)
+            else Toast.makeText(ctx, "No se pudo abrir Play", Toast.LENGTH_SHORT).show()
+          },
+          colors = appBtnColors(selColor), modifier = Modifier.fillMaxWidth()
+        ) { Text("Quitar publicidad — Premium") }
+        OutlinedButton(onClick = { PremiumManager.restore() }, modifier = Modifier.fillMaxWidth()) { Text("Restaurar compra") }
+      }
+    }
+  }
 }
 
 data class OnbPage(val icon: ImageVector, val title: String, val body: String)

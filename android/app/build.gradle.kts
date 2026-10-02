@@ -11,8 +11,8 @@ android {
     applicationId = "ar.com.notifmp"
     minSdk = 26
     targetSdk = 34
-    versionCode = 1
-    versionName = "1.0.0"
+    versionCode = 2
+    versionName = "1.1.0"
     buildConfigField("String", "MP_CLIENT_ID", "\"5631264729819538\"")
     buildConfigField("String", "REDIRECT_URI", "\"https://notif.mposw.com.ar/oauth/callback\"")
     buildConfigField("String", "PROXY_URL", "\"https://notif.mposw.com.ar\"")
@@ -44,6 +44,7 @@ dependencies {
   ksp("androidx.room:room-compiler:2.6.1")
   implementation("androidx.browser:browser:1.8.0")
   implementation("com.google.android.gms:play-services-ads:23.0.0")
+  implementation("com.android.billingclient:billing-ktx:7.0.0")
   implementation("com.google.android.ump:user-messaging-platform:2.2.0")
   implementation("com.squareup.retrofit2:retrofit:2.11.0")
   implementation("com.squareup.retrofit2:converter-moshi:2.11.0")

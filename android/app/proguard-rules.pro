@@ -1,2 +1,3 @@
 -keep class ar.com.notifmp.** { *; }
+-keep class com.android.billingclient.api.** { *; }
 -dontwarn org.apache.poi.**

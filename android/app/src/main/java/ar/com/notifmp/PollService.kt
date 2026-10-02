@@ -43,9 +43,11 @@ class PollService : Service() {
   }
   override fun onBind(i: Intent?): IBinder? = null
   var loopJob: Job? = null
+  private var announcer: Announcer? = null
   override fun onCreate() {
     super.onCreate()
     instance = this
+    announcer = Announcer(this)
     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
     nm.createNotificationChannel(NotificationChannel(CH, "Transferencias", NotificationManager.IMPORTANCE_HIGH))
     nm.createNotificationChannel(NotificationChannel(CH_PERSIST, "Servicio", NotificationManager.IMPORTANCE_LOW))
@@ -122,17 +124,26 @@ class PollService : Service() {
       val payer = p.optJSONObject("payer")
       val name = listOfNotNull(payer?.optString("first_name"), payer?.optString("last_name")).joinToString(" ").ifEmpty { payer?.optString("email").orEmpty() }
       val ins = db.movements().insert(Movement(id, p.optDouble("transaction_amount"), name.takeIf { it.isNotBlank() }, payer?.optString("email"), p.optString("date_approved"), p.optString("payment_method_id")))
-      if (ins != -1L) { notifyTransfer(p.optDouble("transaction_amount")); found = true }
+      if (ins != -1L) { notifyTransfer(p.optDouble("transaction_amount"), name.takeIf { it.isNotBlank() }); found = true }
     }
     return found
   }
-  private fun notifyTransfer(amount: Double) {
+  private suspend fun notifyTransfer(amount: Double, payer: String?) {
     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
     val n = NotificationCompat.Builder(this, CH).setContentTitle("Transferencia recibida")
       .setContentText("${fmtARS(amount)} ARS").setSmallIcon(android.R.drawable.ic_dialog_info).build()
     nm.notify(amount.hashCode(), n)
+    try {
+      val prefs = applicationContext.ds.data.first()
+      val a = announcer
+      if (a != null) {
+        a.soundOn = prefs[Keys.SOUND] ?: true
+        a.ttsOn = prefs[Keys.TTS] ?: true
+        a.announce(amount, payer)
+      }
+    } catch (_: Exception) {}
   }
-  override fun onDestroy() { loopJob?.cancel(); loopJob = null; instance = null; scope.cancel(); super.onDestroy() }
+  override fun onDestroy() { loopJob?.cancel(); loopJob = null; instance = null; try { announcer?.release() } catch (_: Exception) {}; announcer = null; scope.cancel(); super.onDestroy() }
 }
 
 class BootReceiver : BroadcastReceiver() {

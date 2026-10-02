@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Ovalo celeste con borde azul -->
+    <path
+        android:fillColor="#00A7FB"
+        android:strokeColor="#0277BD"
+        android:strokeWidth="5"
+        android:pathData="M14,54 a40,32 0 1,0 80,0 a40,32 0 1,0 -80,0 Z" />
+    <!-- Campanita blanca encima -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,35 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,40 C48,40 44,46 44,55 L44,60 L40,64 L40,66 L68,66 L68,64 L64,60 L64,55 C64,46 60,40 54,40 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,68 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
+</vector>

@@ -1,6 +1,6 @@
 # Notif-MP
 
-App Android nativa (Kotlin + Compose) que **notifica transferencias de Mercado Pago** en tiempo real, con OAuth, sonido/anuncio de monto, modo oscuro, almacenamiento local, pantalla siempre encendida (opcional), exportación CSV+XLSX y banner AdMob al pie. 100% local salvo `api.mercadopago.com`, el micro-proxy OAuth y AdMob.
+App Android nativa (Kotlin + Compose) que **notifica transferencias de Mercado Pago** en tiempo real, con OAuth, sonido/anuncio de monto (1er y 2do plano), modo oscuro, almacenamiento local, pantalla siempre encendida (opcional), exportación CSV+XLSX, icono propio y Premium sin publicidad (compra única Play Billing). 100% local salvo `api.mercadopago.com`, el micro-proxy OAuth, AdMob y Play Billing.
 
 - Repo: `git@github.com:hectororviz/notif-mp.git`
 - Carpeta: `~/notif-mp` (repo independiente, nada de `m-posw/` se toca)
@@ -38,9 +38,20 @@ App ──GET /v1/payments/search (Bearer)──▶ api.mercadopago.com ──�
 
 **Movimientos:** 1 línea `Hoy: $ 125.000`; filtros `Desde/Hasta` con `DatePickerDialog` + Filtrar; tabla detalle (tap → modal monto `$ ... ARS`, fecha, pagador, email, payment_id, tipo, aprobada); barra fija al pie con **CSV / Excel** (SAF, columnas fecha,hora,monto,pagador,email,payment_id,tipo,estado).
 
-**Configuración (3 cards):** 1·Vinculación (estado OAuth + Vincular + QR + code manual + Canjear / Desvincular); 2·Apariencia (modo oscuro + paleta 7 colores botones guardada en `BTN_COLOR`); 3·Avisos y servicio (Sonido, TTS es-AR, no apagar pantalla, intervalo 10–60s); `Guardar e iniciar` con Toast `Configuración guardada ✓`; botones `Ver logs` (dialog con OauthLog 200 filas + Copiar/Limpiar) y `Ver ayuda`.
+**Configuración (4 cards):** 1·Vinculación (estado OAuth + Vincular + QR + code manual + Canjear / Desvincular); 2·Apariencia (modo oscuro + paleta 7 colores botones guardada en `BTN_COLOR`); 3·Avisos y servicio (Sonido, TTS es-AR, no apagar pantalla, intervalo 10–60s); 4·Premium (compra única `premium_no_ads`: `Quitar publicidad — Premium` con precio real + `Restaurar compra` + estado); `Guardar e iniciar` con Toast `Configuración guardada ✓`; botones `Ver logs` (dialog con OauthLog 200 filas + Copiar/Limpiar) y `Ver ayuda`.
 
-## 3. Credenciales MP
+**Sonido 2do plano:** `PollService.notifyTransfer()` emite `mp.mp3` (`USAGE_NOTIFICATION`, sale por auriculares si están conectados) + TTS es-AR en 1er y 2do plano/bloqueado según switches; `Live()` solo muestra Lottie + vibración (sin duplicar audio).
+
+**Icono:** adaptativo vectorial (`drawable/ic_launcher_foreground.xml`: óvalo celeste `#00A7FB` borde azul `#0277BD` + campanita blanca, fondo `#FFFFFF`), `mipmap-anydpi-v26` + `android:icon/roundIcon` en Manifest.
+
+## 3. Premium (Play Billing, compra única)
+
+- Producto `premium_no_ads`, tipo **inapp no consumible** (crear y activar en Play Console; no es suscripción).
+- `PremiumManager` centralizado (`billing-ktx:7.0.0`): conecta Billing, `queryPurchasesAsync(INAPP)` al iniciar, Premium activo solo si compra `PURCHASED`; `PurchasesUpdatedListener` + `acknowledgePurchase`; `launchBuy(activity)` con `ProductDetails`; `restore()` re-consulta; se restaura solo al reinstalar con la misma cuenta (sin `premium=true` local como verdad).
+- `AdManager` centralizado: `MobileAds.initialize` y banner solo si `!isPremium`; `Root()` oculta `bottomBar` cuando Premium (sin lógica duplicada en pantallas).
+- Testing: producto activo + license testers + track interno release (el `debug` usa `.debug` y Play lo ve como otra app).
+
+## 4. Credenciales MP
 
 App MP `Notif-MP` (crear nueva, no reusar m-POSw):
 
@@ -49,7 +60,7 @@ App MP `Notif-MP` (crear nueva, no reusar m-POSw):
 - `redirect_uri=https://notif.mposw.com.ar/oauth/callback` (idéntico en panel MP, BuildConfig y `ALLOWED_REDIRECT`)
 - Panel MP: activar `Authorization Code + PKCE` (challenge S256 obligatorio), scopes `read write offline_access` (refresh 180 días, code 10min/único uso)
 
-## 4. Deploy proxy (VPS)
+## 5. Deploy proxy (VPS)
 
 ```bash
 cd ~/notif-mp
@@ -61,7 +72,7 @@ curl https://notif.mposw.com.ar/.well-known/assetlinks.json  # paquetes + finger
 
 Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `caddy: notif.mposw.com.ar` (patrón `~/oauth-mposw`). DNS `A notif.mposw.com.ar → VPS` ya resuelve. Tras release con keystore propio, cargar su SHA256 en `ASSETLINKS_SHA256` (coma-separados) y `ANDROID_PACKAGES` si cambia el package.
 
-## 5. App (Android Studio / CI)
+## 6. App (Android Studio / CI)
 
 - `minSdk 26, target/compile 34, AGP 8.5.2, Kotlin 1.9.24, Gradle 8.7` (pinneado en CI; Gradle 10 rompe AGP 8.5). Deps UI: `lottie-compose 6.4.0`, `foundation` (pager onboarding), `material-icons-extended`.
 - `AndroidManifest`: `INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE[_SPECIAL_USE], RECEIVE_BOOT_COMPLETED, VIBRATE, AD_ID`; App Link `https://notif.mposw.com.ar/oauth/callback` + scheme `mpnotify://oauth/callback`; FGS `specialUse`; AdMob `APPLICATION_ID ca-app-pub-9763480712544528~9980738235`, banner `ca-app-pub-9763480712544528/7201783224`.
@@ -69,7 +80,7 @@ Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `cadd
 - CI: `push main (android/**)` → JDK17 + SDK34 → `gradle :app:assembleDebug` → `notif-mp.apk` → release rolling `notif-latest` (`softprops/action-gh-release@v2`). Debug = `ar.com.notifmp.debug` (App Links no autoverifican hasta keystore release).
 - Issues CI ya resueltos: `sdkmanager` vía `ANDROID_HOME/cmdline-tools` en PATH; `.gradle.kts` (era DSL Kotlin en `.gradle`); Moshi `KotlinJsonAdapterFactory`; imports `LocalLifecycleOwner` (compose-ui).
 
-## 6. Probar
+## 7. Probar
 
 1. Instalar `notif-mp.apk` de `Releases → notif-latest`.
 2. Onboarding 4 slides → Empezar. Config → Vincular → OK en MP → **tocar "Abrir app"** en la página celeste (App Link auto solo con release) → Toast "¡Vinculado! ✓". Fallback: pegar `code=TG-…` en campo manual + Canjear. `Ver logs` muestra cada etapa.
@@ -77,7 +88,7 @@ Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `cadd
 4. Movimientos: `Hoy: $ ...`, filtro calendario, modal, CSV/XLSX (botones fijos).
 5. Fondo: bloquear 5min, matar app, reiniciar celu → reanuda si estaba activo (`SERVICE_ON`).
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
@@ -88,7 +99,8 @@ Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `cadd
 | `mp_token_failed` en proxy | code usado/expirado, redirect mismatch, PKCE | re-vincular (code único 10min), igualar redirect exacto, revisar método PKCE en panel |
 | Sin avisos en fondo | Doze/OEM, optimización batería | pedir ignorar optimización, FGS persistente, probar en 2 marcas |
 
-## 8. Pendientes
+## 9. Pendientes
 
+- Crear y activar producto `premium_no_ads` (inapp no consumible) en Play Console + license testers.
 - Keystore release + AAB firmado Play + SHA256 a `assetlinks.json` (App Link automático).
 - Rotar `MP_CLIENT_SECRET` (se pegó en chat).

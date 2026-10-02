@@ -42,7 +42,7 @@ App ──GET /v1/payments/search (Bearer)──▶ api.mercadopago.com ──�
 
 **Sonido 2do plano:** `PollService.notifyTransfer()` emite `mp.mp3` (`USAGE_NOTIFICATION`, sale por auriculares si están conectados) + TTS es-AR en 1er y 2do plano/bloqueado según switches; `Live()` solo muestra Lottie + vibración (sin duplicar audio).
 
-**Icono:** adaptativo vectorial (`drawable/ic_launcher_foreground.xml`: óvalo celeste `#00A7FB` borde azul `#0277BD` + campanita blanca, fondo `#FFFFFF`), `mipmap-anydpi-v26` + `android:icon/roundIcon` en Manifest.
+**Icono:** desde `media/icono.png` (óvalo celeste + campanita, fondo blanco): `mipmap-*/ic_launcher[.round].png` legacy (48–192px) + foreground adaptativo `drawable-*/ic_launcher_foreground.png` (icono al 72% sobre transparente) + fondo `#FFFFFF`, `mipmap-anydpi-v26` + `android:icon/roundIcon` en Manifest.
 
 ## 3. Premium (Play Billing, compra única)
 

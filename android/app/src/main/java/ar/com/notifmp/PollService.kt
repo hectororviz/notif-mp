@@ -31,9 +31,18 @@ class PollService : Service() {
       val i = Intent(ctx, PollService::class.java).putExtra("turbo", true).putExtra("turboMin", minutes)
       if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
     }
+    fun stop(ctx: Context) {
+      ctx.stopService(Intent(ctx, PollService::class.java))
+      instance?.let {
+        try { it.loopJob?.cancel() } catch (_: Exception) {}
+        try { it.stopForeground(android.app.Service.STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        try { it.stopSelf() } catch (_: Exception) {}
+      }
+      instance = null
+    }
   }
   override fun onBind(i: Intent?): IBinder? = null
-  private var loopJob: Job? = null
+  var loopJob: Job? = null
   override fun onCreate() {
     super.onCreate()
     instance = this
@@ -62,7 +71,12 @@ class PollService : Service() {
     val tokens = TokenStore(this)
     while (true) {
       try {
-        val normal = applicationContext.ds.data.first()[Keys.NORMAL_SEC]?.coerceIn(10, 60) ?: 60
+        val prefs = applicationContext.ds.data.first()
+        if (prefs[Keys.SERVICE_ON] == false) {
+          turboOn = false
+          return
+        }
+        val normal = prefs[Keys.NORMAL_SEC]?.coerceIn(10, 60) ?: 60
         if (turboOn && System.currentTimeMillis() > turboUntil) {
           turboOn = false
           updateNotif("Monitoreando transferencias")
@@ -115,10 +129,10 @@ class PollService : Service() {
   private fun notifyTransfer(amount: Double) {
     val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
     val n = NotificationCompat.Builder(this, CH).setContentTitle("Transferencia recibida")
-      .setContentText("$ ${String.format("%.2f", amount)} ARS").setSmallIcon(android.R.drawable.ic_dialog_info).build()
+      .setContentText("${fmtARS(amount)} ARS").setSmallIcon(android.R.drawable.ic_dialog_info).build()
     nm.notify(amount.hashCode(), n)
   }
-  override fun onDestroy() { instance = null; scope.cancel(); super.onDestroy() }
+  override fun onDestroy() { loopJob?.cancel(); loopJob = null; instance = null; scope.cancel(); super.onDestroy() }
 }
 
 class BootReceiver : BroadcastReceiver() {

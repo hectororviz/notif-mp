@@ -1,22 +1,36 @@
 package ar.com.notifmp
 
 import android.content.Context
-import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 
 class Announcer(ctx: Context) {
-  private var tts: TextToSpeech? = TextToSpeech(ctx, null)
+  private val appCtx = ctx.applicationContext
+  private var tts: TextToSpeech? = TextToSpeech(appCtx, null)
   private var player: MediaPlayer? = null
   var soundOn = true; var ttsOn = true
+
+  fun playMp() {
+    if (!soundOn) return
+    try {
+      player?.release()
+      val resId = appCtx.resources.getIdentifier("mp", "raw", appCtx.packageName)
+      player = if (resId != 0) MediaPlayer.create(appCtx, resId) else null
+      player?.setOnCompletionListener { it.release(); player = null }
+      player?.start()
+    } catch (_: Exception) {}
+  }
+
   fun announce(amount: Double, payer: String?) {
-    if (soundOn) { try { player?.release(); player = null } catch (_: Exception) {} }
+    playMp()
     if (ttsOn) {
       val txt = "Transferencia recibida, ${"%.0f".format(amount)} pesos" + (payer?.let { ", de $it" } ?: "")
-      tts?.language = Locale("es", "AR")
-      tts?.speak(txt, TextToSpeech.QUEUE_FLUSH, null, "notifmp")
+      try {
+        tts?.language = Locale("es", "AR")
+        tts?.speak(txt, TextToSpeech.QUEUE_FLUSH, null, "notifmp")
+      } catch (_: Exception) {}
     }
   }
-  fun release() { tts?.shutdown(); player?.release() }
+  fun release() { try { tts?.shutdown() } catch (_: Exception) {}; try { player?.release() } catch (_: Exception) {} }
 }

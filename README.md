@@ -8,7 +8,7 @@ App Android nativa (Kotlin + Compose) que **notifica transferencias de Mercado P
 
 ```
 ~/notif-mp/
-  android/   # APK Nativo Kotlin (En vivo / Movimientos / Config / Diag temporal)
+  android/   # APK Nativo Kotlin (En vivo / Movimientos / Config + Onboarding)
   proxy/     # micro-proxy OAuth stateless (único con MP_CLIENT_SECRET)
   docker-compose.yml
   .env / .env.example
@@ -30,15 +30,15 @@ App ──GET /v1/payments/search (Bearer)──▶ api.mercadopago.com ──�
 - Polling: `ForegroundService` dual — base configurable **10–60s** + **Turbo 2s** (botón en En vivo, auto-retorno al recibir transferencia o timeout 10min). Filtro `approved + cvu/money_transfer`, dedup por `paymentId` en Room, cursor persistido.
 - Push MP: no usa webhooks (polling directo, 100% local).
 
-## 2. UI (vertical, 3 solapas + Diag temporal)
+## 2. UI (vertical, 3 solapas + Onboarding)
 
-**En vivo:** hero con último monto (grande), hora/pagador, cadencia actual (`Cada 30s` / `Cada 2s · TURBO`), últimas 5 centradas, botón **Turbo 2s** (se deshabilita activo, se rehabilita al recibir transferencia/timeout). Banner AdMob fijo al pie.
+**Onboarding (primera apertura):** 4 slides `HorizontalPager` con ilustración vectorial (Vincular / Monitoreo+LED / Aviso de cobro / Movimientos+Exportar), `Saltar/Siguiente/Empezar`, flag `ONBOARD_DONE` en DataStore, reabrible desde Config → `Ver ayuda`.
 
-**Movimientos:** cards `Total hoy | Total ayer` (ARS, `America/Argentina`), filtros `Desde/Hasta` (aaaa-mm-dd) + Filtrar, botones **CSV / Excel** (SAF `ACTION_CREATE_DOCUMENT`, columnas fecha,hora,monto,pagador,email,payment_id,tipo,estado), tap fila → modal detalle (monto, fecha, pagador, email, payment_id, tipo, aprobada).
+**En vivo:** fila superior `Última transferencia` + botón LED ON/OFF (verde parpadeante = consulta activa, rojo fijo = pausado: sin requests ni avisos, `SERVICE_ON=false` + `PollService.stop()`); monto última en negrita formato es-AR (`$ 125.000,00`), debajo `dd/MM/yyyy HH:mm` pequeño + cadencia (`Cada 30s` / `Cada 2s · TURBO` / `Pausado`); tabla últimas 10 sin líneas (monto `$ ...` + fecha/hora); botón **Turbo 2s** compacto centrado al pie (se deshabilita activo). Al llegar pago nuevo: animación Lottie `assets/success.json` centrada + tono `res/raw/mp.mp3` + vibración corta + TTS. Banner AdMob fijo al pie.
 
-**Configuración:** estado OAuth + Vincular (Custom Tab) + QR de la misma `auth_url` + campo code manual + Canjear; Modo oscuro switch; Sonido on/off; Monto hablado TTS (es-AR) on/off; No apagar pantalla (`FLAG_KEEP_SCREEN_ON` solo En vivo); Intervalo base 10–60s; Guardar e iniciar.
+**Movimientos:** 1 línea `Hoy: $ 125.000`; filtros `Desde/Hasta` con `DatePickerDialog` + Filtrar; tabla detalle (tap → modal monto `$ ... ARS`, fecha, pagador, email, payment_id, tipo, aprobada); barra fija al pie con **CSV / Excel** (SAF, columnas fecha,hora,monto,pagador,email,payment_id,tipo,estado).
 
-**Diag (temporal, se quita al estabilizar):** log OAuth in-app (`callback/state/exchange/store`), botón Copiar/Limpiar, secretos ofuscados (`TG-…`).
+**Configuración (3 cards):** 1·Vinculación (estado OAuth + Vincular + QR + code manual + Canjear / Desvincular); 2·Apariencia (modo oscuro + paleta 7 colores botones guardada en `BTN_COLOR`); 3·Avisos y servicio (Sonido, TTS es-AR, no apagar pantalla, intervalo 10–60s); `Guardar e iniciar` con Toast `Configuración guardada ✓`; botones `Ver logs` (dialog con OauthLog 200 filas + Copiar/Limpiar) y `Ver ayuda`.
 
 ## 3. Credenciales MP
 
@@ -63,18 +63,19 @@ Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `cadd
 
 ## 5. App (Android Studio / CI)
 
-- `minSdk 26, target/compile 34, AGP 8.5.2, Kotlin 1.9.24, Gradle 8.7` (pinneado en CI; Gradle 10 rompe AGP 8.5).
-- `AndroidManifest`: `INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE[_SPECIAL_USE], RECEIVE_BOOT_COMPLETED, AD_ID`; App Link `https://notif.mposw.com.ar/oauth/callback` + scheme `mpnotify://oauth/callback`; FGS `specialUse`; AdMob `APPLICATION_ID ca-app-pub-9763480712544528~9980738235`, banner `ca-app-pub-9763480712544528/7201783224`.
+- `minSdk 26, target/compile 34, AGP 8.5.2, Kotlin 1.9.24, Gradle 8.7` (pinneado en CI; Gradle 10 rompe AGP 8.5). Deps UI: `lottie-compose 6.4.0`, `foundation` (pager onboarding), `material-icons-extended`.
+- `AndroidManifest`: `INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE[_SPECIAL_USE], RECEIVE_BOOT_COMPLETED, VIBRATE, AD_ID`; App Link `https://notif.mposw.com.ar/oauth/callback` + scheme `mpnotify://oauth/callback`; FGS `specialUse`; AdMob `APPLICATION_ID ca-app-pub-9763480712544528~9980738235`, banner `ca-app-pub-9763480712544528/7201783224`.
+- Recursos: `res/raw/mp.mp3` (tono aviso), `assets/success.json` (Lottie cobro). Formato moneda es-AR en `Format.kt` (`fmtARS` → `$ 125.000,00`, `fmtFechaHora` → `dd/MM/yyyy HH:mm`).
 - CI: `push main (android/**)` → JDK17 + SDK34 → `gradle :app:assembleDebug` → `notif-mp.apk` → release rolling `notif-latest` (`softprops/action-gh-release@v2`). Debug = `ar.com.notifmp.debug` (App Links no autoverifican hasta keystore release).
 - Issues CI ya resueltos: `sdkmanager` vía `ANDROID_HOME/cmdline-tools` en PATH; `.gradle.kts` (era DSL Kotlin en `.gradle`); Moshi `KotlinJsonAdapterFactory`; imports `LocalLifecycleOwner` (compose-ui).
 
 ## 6. Probar
 
 1. Instalar `notif-mp.apk` de `Releases → notif-latest`.
-2. Config → Vincular → OK en MP → **tocar "Abrir app"** en la página celeste (App Link auto solo con release) → Toast "¡Vinculado! ✓". Fallback: pegar `code=TG-…` en campo manual + Canjear. Diag muestra cada etapa.
-3. Transferir a la cuenta → ~base (o 2s en Turbo) suena + TTS + hero/últimas 5.
-4. Movimientos: totales, filtro, modal, CSV/XLSX.
-5. Fondo: bloquear 5min, matar app, reiniciar celu → reanuda si estaba activo.
+2. Onboarding 4 slides → Empezar. Config → Vincular → OK en MP → **tocar "Abrir app"** en la página celeste (App Link auto solo con release) → Toast "¡Vinculado! ✓". Fallback: pegar `code=TG-…` en campo manual + Canjear. `Ver logs` muestra cada etapa.
+3. Transferir a la cuenta → ~base (o 2s en Turbo) animación central + tono mp.mp3 + TTS + primera en Últimas 10. LED: verde parpadea consultando, rojo pausa todo.
+4. Movimientos: `Hoy: $ ...`, filtro calendario, modal, CSV/XLSX (botones fijos).
+5. Fondo: bloquear 5min, matar app, reiniciar celu → reanuda si estaba activo (`SERVICE_ON`).
 
 ## 7. Troubleshooting
 
@@ -89,7 +90,5 @@ Compose: 1 servicio `notif-mp-proxy` en red externa `caddy_net` con labels `cadd
 
 ## 8. Pendientes
 
-- Ajustes finos GUI (tipografía/espaciados En vivo).
 - Keystore release + AAB firmado Play + SHA256 a `assetlinks.json` (App Link automático).
-- Quitar solapa **Diag** al estabilizar (dejar card último error en Config).
 - Rotar `MP_CLIENT_SECRET` (se pegó en chat).

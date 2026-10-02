@@ -16,7 +16,7 @@ object OauthLog {
       .replace(Regex("APP_USR-[A-Za-z0-9-]+"), "APP_USR-…")
       .replace(Regex("TEST-[A-Za-z0-9-]+"), "TEST-…")
     rows.add(0, Row(fmt.format(Date()), stage, safe.take(600)))
-    while (rows.size > 100) rows.removeLast()
+    while (rows.size > 200) rows.removeLast()
   }
   fun dump(): String = rows.joinToString("\n") { "${it.time} [${it.stage}] ${it.detail}" }
   fun clear() = rows.clear()

@@ -50,5 +50,7 @@ dependencies {
   implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
   implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
   implementation("com.google.zxing:core:3.5.3")
+  implementation("androidx.compose.foundation:foundation")
+  implementation("com.airbnb.android:lottie-compose:6.4.0")
   implementation("org.apache.poi:poi-ooxml:5.2.5")
 }

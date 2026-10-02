@@ -16,6 +16,8 @@ object Keys {
   val WAIT_SEC = intPreferencesKey("wait_sec")
   val LAST_POLL = longPreferencesKey("last_poll")
   val SERVICE_ON = booleanPreferencesKey("service_on")
+  val BTN_COLOR = intPreferencesKey("btn_color")
+  val ONBOARD_DONE = booleanPreferencesKey("onboard_done")
 }
 
 class TokenStore(private val ctx: Context) {

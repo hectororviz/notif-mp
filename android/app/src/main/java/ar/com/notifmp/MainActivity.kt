@@ -19,6 +19,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -358,7 +360,7 @@ fun Movs(btnColor: Int) {
   val df = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply { timeZone = TimeZone.getTimeZone("America/Argentina") } }
   val today = df.format(Date())
   fun dayOf(s: String) = list.filter { df.format(Date(it.notifiedAt)) == s }.sumOf { it.amount }
-  fun pickDate(current: String, onPick: (String) -> Unit): Long? {
+  fun pickDate(current: String): Long? {
     return try { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(current)?.time } catch (_: Exception) { null }
   }
   Scaffold(bottomBar = {
@@ -570,6 +572,7 @@ fun Config(dark: Boolean, onDark: (Boolean) -> Unit, keepOn: Boolean, onKeep: (B
 
 data class OnbPage(val icon: ImageVector, val title: String, val body: String)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Onboarding(onFinish: () -> Unit) {
   val pages = listOf(

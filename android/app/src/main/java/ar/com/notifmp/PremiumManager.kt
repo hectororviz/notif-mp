@@ -44,7 +44,7 @@ object PremiumManager : PurchasesUpdatedListener {
     c.startConnection(object : BillingClientStateListener {
       override fun onBillingSetupFinished(r: BillingResult) {
         if (r.responseCode == BillingClient.BillingResponseCode.OK) {
-          scope.launch { queryProduct() }
+          queryProduct()
           done()
         } else {
           statusMsg.tryEmit("Billing no disponible (${r.responseCode})")
@@ -54,7 +54,7 @@ object PremiumManager : PurchasesUpdatedListener {
     })
   }
 
-  private suspend fun queryProduct() {
+  private fun queryProduct() {
     val c = client ?: return
     val params = QueryProductDetailsParams.newBuilder()
       .setProductList(
@@ -66,21 +66,18 @@ object PremiumManager : PurchasesUpdatedListener {
         )
       ).build()
     try {
-      val res = c.queryProductDetails(params)
-      val pd = res.productDetailsList?.firstOrNull { it.productId == PRODUCT_ID }
-      details = pd
-      pd?.oneTimePurchaseOfferDetails?.formattedPrice?.let { priceText.tryEmit(it) }
+      c.queryProductDetailsAsync(params) { _, list ->
+        val pd = list.firstOrNull { it.productId == PRODUCT_ID }
+        details = pd
+        pd?.oneTimePurchaseOfferDetails?.formattedPrice?.let { priceText.tryEmit(it) }
+      }
     } catch (_: Exception) {}
   }
 
   fun refresh() {
     connect {
-      scope.launch {
-        try {
-          queryProduct()
-          checkOwned()
-        } catch (_: Exception) {}
-      }
+      queryProduct()
+      checkOwned()
     }
   }
 
@@ -89,30 +86,36 @@ object PremiumManager : PurchasesUpdatedListener {
     refresh()
   }
 
-  private suspend fun checkOwned() {
-    val c = client ?: return
-    val owned = try {
-      val res = c.queryPurchasesAsync(
-        QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
-      )
-      res.purchasesList.any { it.products.contains(PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED }
-    } catch (_: Exception) { isPremium.value }
-    if (owned) {
-      acknowledgeIfNeeded()
-      if (!isPremium.value) statusMsg.tryEmit("Premium restaurado ✓")
-    }
-    isPremium.tryEmit(owned)
-  }
-
-  private suspend fun acknowledgeIfNeeded() {
+  private fun checkOwned() {
     val c = client ?: return
     try {
-      val res = c.queryPurchasesAsync(
+      c.queryPurchasesAsync(
         QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
-      )
-      for (p in res.purchasesList) {
-        if (p.products.contains(PRODUCT_ID) && p.purchaseState == Purchase.PurchaseState.PURCHASED && !p.isAcknowledged) {
-          c.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.purchaseToken).build())
+      ) { _, purchases ->
+        val owned = purchases.any { it.products.contains(PRODUCT_ID) && it.purchaseState == Purchase.PurchaseState.PURCHASED }
+        if (owned) {
+          acknowledgeIfNeeded()
+          if (!isPremium.value) statusMsg.tryEmit("Premium restaurado ✓")
+        }
+        isPremium.tryEmit(owned)
+      }
+    } catch (_: Exception) {}
+  }
+
+  private fun acknowledgeIfNeeded() {
+    val c = client ?: return
+    try {
+      c.queryPurchasesAsync(
+        QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
+      ) { _, purchases ->
+        for (p in purchases) {
+          if (p.products.contains(PRODUCT_ID) && p.purchaseState == Purchase.PurchaseState.PURCHASED && !p.isAcknowledged) {
+            try {
+              c.acknowledgePurchase(
+                AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.purchaseToken).build()
+              ) { _ -> }
+            } catch (_: Exception) {}
+          }
         }
       }
     } catch (_: Exception) {}
